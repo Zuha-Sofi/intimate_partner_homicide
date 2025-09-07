@@ -1,0 +1,342 @@
+---
+title: "Intimate Partner Homicide: A Deep Dive into Women's Safety"
+subtitle: "Examining the Risks and Realities for Women"
+
+author: "Zuha Farooq Sofi, s3993780"
+output: slidy_presentation
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,       
+  message = FALSE,    
+  warning = FALSE,    
+  fig.align = "center" 
+)
+# Loading necessary libraries
+library(plotly)
+library(sf)
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(shiny)
+library(tidyr)
+library(viridis)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+```
+
+
+# Introduction
+
+* ⁤Despite the advancement of human rights and women's empowerment movements, gender-based violence, especially intimate partner violence, remains a global issue with devastating consequences for women's safety, health, and human rights. ⁤⁤Intimate partner violence is one of the most widespread forms of gender-based violence, affecting women of all ages, cultures, education levels, and income groups. 
+
+* ⁤⁤This presentation aims to shed light on the often overlooked issue of intimate partner violence and its impact on women's lives.
+
+
+
+
+
+
+# Homicide Rates in Australia (1989-2023)
+
+```{r Graph1, echo=FALSE,fig.align='center'}
+# Defining a color palette
+
+palette <- colorRampPalette(c("#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"))
+# Load the homicide incidents file
+file_path <- "homicide_incidents_1989-90_to_2022-23_unlocked.xlsx"
+sheet_name <- "Table A2"
+
+# Read the data from the specified sheet
+rate_data <- read_excel(file_path, sheet = sheet_name)
+colnames(rate_data) <- rate_data[1, ]
+
+# Remove the first row
+rate_data <- rate_data[-1, ]
+
+# Convert the data frame to a proper format
+rate_data <- as.data.frame(rate_data)
+
+# Rename the first column to "Year"
+colnames(rate_data)[1] <- "Year"
+
+# Select relevant columns (Year, Total)
+rate_data_year <- rate_data %>%
+  select(Year, Total)
+
+# Remove rows where the Year is NA or blank
+rate_data_year <- rate_data_year %>%
+  filter(!is.na(Total) & Total != "")
+
+# Create the line chart 
+fig <- plot_ly(rate_data_year, x = ~Year, y = ~Total, type = 'scatter', mode = 'lines+markers', name = 'Total Homicide Rate',
+               text = ~paste("Year:", Year, "<br>Homicide rate:", Total), hoverinfo = 'text', 
+               marker = list(color = palette(5)[4]), 
+               line = list(color = palette(5)[4]), shape = 'spline') %>%
+  layout(
+    title = "Homicide Rates in Australia (1989-2023)",
+    xaxis = list(title = "Year", tickangle = 270),
+    yaxis = list(title = "Rate per 100,000 Population"),
+    hoverlabel = list(bgcolor = list(color = palette(5)[4]), font = list(color = "white"))
+    
+  )
+
+fig
+
+
+```
+
+
+# Homicide Rate by Jurisdiction in Australia (2022-23)
+
+
+
+```{r Graph2, echo=FALSE, fig.align='center'}
+output <- capture.output({
+# Extract only the 2022-23 row
+rate_data_2022_23 <- rate_data %>%
+  filter(Year == "2022–23") %>%
+  select(NSW, Vic, Qld, WA, SA, Tas, ACTa, NT)
+# Reshape the data to long format
+rate_data_long <- rate_data_2022_23 %>%
+  pivot_longer(cols = everything(), names_to = "Region", values_to = "RatePer100k")
+
+# Adjusting region names to match shapefile
+rate_data_long$Region <- recode(rate_data_long$Region,
+                                NSW = "New South Wales", 
+                                Vic = "Victoria", 
+                                Qld = "Queensland", 
+                                WA = "Western Australia", 
+                                SA = "South Australia", 
+                                Tas = "Tasmania", 
+                                ACTa = "Australian Capital Territory", 
+                                NT = "Northern Territory")  
+
+
+
+# Suppress messages and warnings when reading the shapefile
+suppressMessages({
+  suppressWarnings({
+    # Read the shapefile
+    shapefile_path <- "STE_2021_AUST_SHP_GDA2020/STE_2021_AUST_GDA2020.shp"
+    australia_map <- st_read(file.path(shapefile_path))
+  })
+})
+
+# Excluding the last two rows from australia_map
+australia_map <- australia_map %>%
+  slice(1:(n() - 2))  # Keep all rows except the last two
+
+australia_rate_map <- left_join(australia_map, rate_data_long, by = c("STE_NAME21" = "Region"))
+
+
+
+
+# Create the plot
+fig <- plot_ly() %>%
+  add_sf(
+    data = australia_rate_map,
+    split = ~STE_NAME21,
+    color = ~RatePer100k,
+    colors = palette(100),  
+     text = ~paste(STE_NAME21, "<br>Homicide rate:", RatePer100k), hoverinfo = 'text',
+    line = list(color = "black") 
+  ) %>%
+  layout(
+    title = "Homicide Rate by Jurisdiction in Australia, 2022-23",
+    geo = list(
+      scope = "australia",
+      projection = list(type = "mercator"),
+      showland = TRUE,
+      landcolor = "rgb(217, 217, 217)",
+      subunitwidth = 1,
+      countrywidth = 1,
+      subunitcolor = "black", 
+      countrycolor = "black"  
+    )
+  )
+})
+fig
+
+
+```
+
+
+# Homicide Incidents by Classification (2022-2023)
+
+* Homicides involving domestic had the highest rate which makes it an area of concern.
+```{r Graph3, echo=FALSE,fig.align='center'}
+sheet_name <- "Table A6"
+
+# Read the data from the specified sheet
+incident_data <- read_excel(file_path, sheet = sheet_name)
+colnames(incident_data) <- incident_data[1, ]
+
+# Remove the first row
+incident_data <- incident_data[-1, ]
+
+# Convert the data frame to a proper format
+incident_data <- as.data.frame(incident_data)
+
+# Rename the first column to "Year"
+colnames(incident_data)[1] <- "Year"
+
+# Extract only the 2022-23 row and relevant columns
+incident_data_2022_23 <- incident_data %>%
+  filter(Year == "2022–23") %>%
+  select(Year, Domestic, Acquaintance, Stranger)
+
+# Convert the relevant columns to numeric
+incident_data_2022_23 <- incident_data_2022_23 %>%
+  mutate(
+    Domestic = as.numeric(Domestic),
+    Acquaintance = as.numeric(Acquaintance),
+    Stranger = as.numeric(Stranger)
+  )
+
+# Reshape the data to long format for plotting
+incident_data_long <- incident_data_2022_23 %>%
+  pivot_longer(cols = c(Domestic, Acquaintance, Stranger), names_to = "Classification", values_to = "Count")
+
+# Sort the data frame based on Count in descending order
+incident_data_long_sorted <- incident_data_long[order(-incident_data_long$Count), ]
+
+# Create the bar chart using Plotly
+fig <- plot_ly(
+  incident_data_long_sorted,
+  x = ~Classification,
+  y = ~Count,
+  type = 'bar',
+  marker = list(color = palette(4), line = list(color = palette(4), width = 0.5)) 
+) %>%
+  layout(
+    title = "Homicide Incidents by Classification (2022-2023)",
+    xaxis = list(title = "Classification"),
+    yaxis = list(title = "Rate per 100,000"),
+    barmode = 'group',
+    bargap = 0.5
+  )
+
+fig 
+
+
+
+```
+
+# Domestic Homicide Incidents by Classification (2022-2023)
+
+* Moreover, upon closer examination of domestic homicide incidents, it becomes evident that the rate of intimate partner homicide is notably higher in comparison to other types, thereby warranting further investigation into this area.
+```{r Graph4, echo=FALSE,fig.align='center'}
+sheet_name <- "Table A8"
+
+# Read the data from the specified sheet
+domestic_incident_data <- read_excel(file_path, sheet = sheet_name)
+colnames(domestic_incident_data) <- domestic_incident_data[1, ]
+
+# Remove the first row
+domestic_incident_data <- domestic_incident_data[-1, ]
+
+# Convert the data frame to a proper format
+domestic_incident_data <- as.data.frame(domestic_incident_data)
+
+# Rename the first column to "Year"
+colnames(domestic_incident_data)[1] <- "Year"
+
+# Extract only the 2022-23 row and relevant columns
+domestic_incident_data_2022_23 <- domestic_incident_data %>%
+  filter(Year == "2022–23") %>%
+  select(Year, `Intimate partner`, Filicide, Parricide, Siblicide, `Other family`)
+
+# Convert the relevant columns to numeric
+domestic_incident_data_2022_23 <- domestic_incident_data_2022_23 %>%
+  mutate(
+    `Intimate partner` = as.numeric(`Intimate partner`),
+    Filicide = as.numeric(Filicide),
+    Parricide = as.numeric(Parricide),
+    Siblicide = as.numeric(Siblicide),
+    `Other family` = as.numeric(`Other family`)
+  )
+
+# Reshape the data to long format for plotting
+domestic_incident_data_long <- domestic_incident_data_2022_23 %>%
+  pivot_longer(cols = c(`Intimate partner`, Filicide, Parricide, Siblicide, `Other family`), names_to = "Classification", values_to = "Count")
+
+# Create the bar chart using Plotly
+fig <- plot_ly(
+  domestic_incident_data_long,
+  x = ~Classification,
+  y = ~Count,
+  type = 'bar',
+  marker = list(color = palette(4), line = list(color = palette(4), width = 0.5))
+) %>%
+  layout(
+    title = "Domestic Homicide Incidents by Classification (2022-2023)",
+    xaxis = list(title = "Classification"),
+    yaxis = list(title = "Number of Incidents"),
+    barmode = 'group'
+  )
+
+fig
+```
+
+# Proportion of Intimate Partner Homicide Victims by Sex (1989–90 to 2022–23)
+
+* The following graph illustrates the alarmingly high proportion of intimate partner homicide victims who are female. 
+```{r Graph5, echo=FALSE,fig.align='center'}
+
+sheet_name <- "Table A7"
+
+# Read the data from the specified sheet
+intimate_partner_homicide_data <- read_excel(file_path, sheet = sheet_name)
+
+
+
+# Remove the first and second rows
+intimate_partner_homicide_data <- intimate_partner_homicide_data[-c(1, 2), ]
+
+# Convert the data frame to a proper format
+intimate_partner_homicide_data <- as.data.frame(intimate_partner_homicide_data)
+
+# Remove unwanted columns
+intimate_partner_homicide_data <- intimate_partner_homicide_data %>%
+  select(-2, -4, -6, -7)
+
+# Rename columns
+colnames(intimate_partner_homicide_data) <- c("Year", "Female", "Male")
+
+# Convert relevant columns to numeric
+intimate_partner_homicide_data <- intimate_partner_homicide_data %>%
+  mutate(
+    Female = as.numeric(Female),
+    Male = as.numeric(Male)
+  )
+
+# Prepare the data for the stacked bar chart
+intimate_partner_homicide_long <- intimate_partner_homicide_data %>%
+  pivot_longer(cols = c(Female, Male), names_to = "Sex", values_to = "Rate")
+
+# Create the stacked bar chart
+fig_stacked_bar <- plot_ly(intimate_partner_homicide_long, x = ~Year, y = ~Rate, color = ~Sex, type = 'bar', text = ~paste(Sex, "Rate per 100,000:", Rate), hoverinfo = 'text') %>%
+  layout(
+    barmode = 'stack',
+    title = "Proportion of Intimate Partner Homicide Victims by Sex (1989–90 to 2022–23)",
+    xaxis = list(title = "Year",tickangle = 270),
+    yaxis = list(title = "Rate per 100,000 Population")
+  )
+
+fig_stacked_bar
+
+```
+# Conclusion
+
+* After examining, we have discovered a startling fact: women make up a sizable majority of victims of intimate partner homicide, highlighting a very alarming trend in our society. This demands that the core causes of gender-based violence be addressed right away, and that individuals who are at risk receive complete support and protection. Moving forward, we must put everyone's safety and wellbeing first, regardless of gender, and endeavor to create a culture that does not condone intimate partner violence. We can work toward a future where everyone can live without fear of violence or harm by increasing awareness, pushing for change, and putting evidence-based interventions into practice.
+
+# References
+
+* Digital boundary files. Retrieved June 03,2024, from Australian Bureau of Statistics website: https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026/access-and-downloads/digital-boundary-files
+
+* Homicide in Australia 2022–23 homicide in Australia. Retrieved June 03,2024, from Australian Institute of Criminology website: https://www.aic.gov.au/publications/sr/sr46
